@@ -99,6 +99,7 @@ __global__ void tensorProdTiledKerNorm(ElTp* A, ElTp* B, ElTp* C, const int len)
         }
     }
 
+    // (1) Load Inputs from Global Memory to Shared Memory
     for(int dd=0; dd<len; dd+=2*T) {
         { // copy slice of A from global to local memory (coalesced on d)
             #pragma unroll
@@ -126,6 +127,8 @@ __global__ void tensorProdTiledKerNorm(ElTp* A, ElTp* B, ElTp* C, const int len)
         }
         __syncthreads();
 
+
+	// (2) Load Inputs from Shared Memory to Registers
         for(int d=0; d<2*T; d++) {
             // copy slice of A from local to register memory
             #pragma unroll
@@ -138,6 +141,7 @@ __global__ void tensorProdTiledKerNorm(ElTp* A, ElTp* B, ElTp* C, const int len)
                 Breg[b] = Bloc[b][c][k][d];
             }
 
+	    // (3) Contract Inputs to generate Output on Registers
             #pragma unroll
             for(int a=0; a<T; a++) {
                 #pragma unroll
@@ -149,7 +153,8 @@ __global__ void tensorProdTiledKerNorm(ElTp* A, ElTp* B, ElTp* C, const int len)
         }
         __syncthreads();
     }
-
+    
+    // (4) Store the Results from Registers to Global Memory
     #pragma unroll
     for(int a=0; a<T; a++) {
         #pragma unroll
