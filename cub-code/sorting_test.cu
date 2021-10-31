@@ -1,6 +1,10 @@
 //#include "../../cub-1.8.0/cub/cub.cuh"   // or equivalently <cub/device/device_histogram.cuh>
 #include "cub.cuh"
 #include "helper.cu.h"
+#include "kernels.cu.h"
+#include <math.h>
+
+#define blockMemSize 1024
 
 template<class Z>
 bool validateZ(Z* A, uint32_t sizeAB) {
@@ -104,5 +108,55 @@ int main (int argc, char * argv[]) {
     cudaFree(d_keys_in); cudaFree(d_keys_out);
     free(h_keys); free(h_keys_res);
 
+
+    //  ** New kernel section ** 
+    // setup execution parameters
+    int dimbl = (int) (sqrt(ceil(N/256)));
+    dim3 block(16, 16, 1); // 256 threads per block
+    dim3 grid (dimbl, dimbl, 1); 
+
+    //Allocate and Initialize Host data with random values
+    uint32_t* keys  = (uint32_t*) malloc(N*sizeof(uint32_t));
+    uint32_t* keys_res  = (uint32_t*) malloc(N*sizeof(uint32_t));
+    randomInitNat(keys, N, N/10);
+
+    //Allocate and Initialize Device data
+    uint32_t* keys_in;
+    uint32_t* keys_out;
+    cudaSucceeded(cudaMalloc((void**) &keys_in,  N * sizeof(uint32_t)));
+    cudaSucceeded(cudaMemcpy(keys_in, keys, N * sizeof(uint32_t), cudaMemcpyHostToDevice));
+    cudaSucceeded(cudaMalloc((void**) &keys_out, N * sizeof(uint32_t)));
+
+    //    double elapsed = sortRedByKeyCUB( keys_in, deys_out, N );
+    double elapsedKernel;
+    struct timeval t_start, t_end, t_diff;
+    gettimeofday(&t_start, NULL);
+
+    //    const int blockMemSize = N/(dimbl*dimbl); // Maybe just 1024?? 
+    for(int q=0; q<GPU_RUNS; q++) {
+      kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out);
+    }
+    cudaThreadSynchronize();
+
+    gettimeofday(&t_end, NULL);
+    timeval_subtract(&t_diff, &t_end, &t_start);
+    elapsedKernel = (t_diff.tv_sec*1e6+t_diff.tv_usec) / ((double)GPU_RUNS);
+
+
+    cudaMemcpy(keys_res, keys_out, N*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    cudaCheckError();
+
+    bool successKernel = validateZ(keys_res, N);
+
+    printf("Our sorting for N=%lu runs in: %.2f us, VALID: %d\n", N, elapsedKernel, successKernel);
+
+    // Cleanup and closing
+    cudaFree(keys_in); cudaFree(keys_out);
+    free(keys); free(keys_res);
+
+
     return success ? 0 : 1;
+
+
 }
