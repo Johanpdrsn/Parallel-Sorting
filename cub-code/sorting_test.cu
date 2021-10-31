@@ -123,18 +123,19 @@ int main (int argc, char * argv[]) {
     //Allocate and Initialize Device data
     uint32_t* keys_in;
     uint32_t* keys_out;
+    uint32_t* glb_bins;
     cudaSucceeded(cudaMalloc((void**) &keys_in,  N * sizeof(uint32_t)));
     cudaSucceeded(cudaMemcpy(keys_in, keys, N * sizeof(uint32_t), cudaMemcpyHostToDevice));
     cudaSucceeded(cudaMalloc((void**) &keys_out, N * sizeof(uint32_t)));
+    cudaSucceeded(cudaMalloc((void**) &glb_bins, dimbl * 16 * sizeof(uint32_t)));
 
     //    double elapsed = sortRedByKeyCUB( keys_in, deys_out, N );
     double elapsedKernel;
     struct timeval t_start, t_end, t_diff;
     gettimeofday(&t_start, NULL);
 
-    //    const int blockMemSize = N/(dimbl*dimbl); // Maybe just 1024?? 
     for(int q=0; q<GPU_RUNS; q++) {
-      kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out);
+      kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, 1);
     }
     cudaThreadSynchronize();
 
@@ -152,7 +153,7 @@ int main (int argc, char * argv[]) {
     printf("Our sorting for N=%lu runs in: %.2f us, VALID: %d\n", N, elapsedKernel, successKernel);
 
     // Cleanup and closing
-    cudaFree(keys_in); cudaFree(keys_out);
+    cudaFree(keys_in); cudaFree(keys_out); cudaFree(glb_bins);
     free(keys); free(keys_res);
 
 
