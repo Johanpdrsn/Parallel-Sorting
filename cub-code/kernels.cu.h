@@ -42,6 +42,11 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     __shared__ uint32_t loc_data[N];
     __shared__ uint32_t local_histogram[16];
 
+    for (int i = 0; i < 16; i++)
+    {
+      local_histogram[i] = 0;
+    }
+
     uint32_t data[4];
     uint32_t binsForElms[4];
     uint32_t ranksInBins[4];
@@ -78,7 +83,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     int bstart = iter * 4;
     int binidx;
     uint32_t mask;
-    mask = ((1 << 4) << bstart);
+    mask = ((1 << 4) << bstart) - 1;
 
     // Calculate the histogram and the bins and ranks in the bins.
     // Loop over 4 data entries
