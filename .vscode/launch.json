@@ -1,0 +1,14 @@
+
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Cuda: Debug",
+            "type": "cuda-gdb",
+            "request": "launch",
+            "gdb": "cuda-gdb",
+            "program": "${workspaceFolder}/cub-code/test-cub",
+            "args": "100000000"
+        }
+    ]
+}

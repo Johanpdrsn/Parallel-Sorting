@@ -137,7 +137,7 @@ int main (int argc, char * argv[]) {
     for(int q=0; q<GPU_RUNS; q++) {
       kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, 1);
     }
-    cudaThreadSynchronize();
+    cudaDeviceSynchronize();
 
     gettimeofday(&t_end, NULL);
     timeval_subtract(&t_diff, &t_end, &t_start);

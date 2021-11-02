@@ -1,0 +1,28 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build",
+            "command": "make -C cub-code cub-compile dbg=1",
+            "type": "shell",
+            "args": [],
+            "problemMatcher": [
+                "nvcc"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Rebuild",
+            "command": "make -C cub-code clean; make -C cub-code cub-compile dbg=1",
+            "type": "shell",
+            "args": [],
+            "problemMatcher": [
+                "nvcc"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}
