@@ -135,7 +135,7 @@ int main (int argc, char * argv[]) {
     gettimeofday(&t_start, NULL);
 
     for(int q=0; q<GPU_RUNS; q++) {
-      kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, 1);
+      kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,0);
     }
     cudaDeviceSynchronize();
 
@@ -147,6 +147,7 @@ int main (int argc, char * argv[]) {
     cudaMemcpy(keys_res, keys_out, N*sizeof(uint32_t), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     cudaCheckError();
+    
 
     bool successKernel = validateZ(keys_res, N);
 

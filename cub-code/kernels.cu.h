@@ -36,10 +36,10 @@ void countSort(char arr[])
         arr[i] = output[i];
 }
 
-template <int N> //<class ElTp> <- we will need this to generalize
-__global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t *glb_bins, int iter)
+template <int block_size> //<class ElTp> <- we will need this to generalize
+__global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t *glb_bins, int N, int iter)
 {
-    __shared__ uint32_t loc_data[N];
+    __shared__ uint32_t loc_data[block_size];
     __shared__ uint32_t bins[16];
 
     uint32_t data[4];
@@ -57,8 +57,10 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     for (int i = 0; i < 4; i++)
     {
         // if  glb_memoffset < N - ??
-        data[i] = data_keys_in[glb_memoffset + i];
-        loc_data[loc_memoffset + i] = data[i];
+        if (((glb_memoffset + i) < N) && ((loc_memoffset + i) < block_size)){
+            data[i] = data_keys_in[glb_memoffset + i];
+            loc_data[loc_memoffset + i] = data[i];
+        }
     }
 
     /* is this coalesced?
@@ -74,12 +76,12 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     int bstart = iter * 4;
     int binidx;
     uint32_t mask;
-    mask = ((1 << 4) << bstart);
+    mask = (15 << bstart);
     // Loop over 4 data entries
     for (int i = 0; i < 4; i++)
     {
-        binidx = data[i] & mask;
-        atomicAdd(&bins[binidx], 1);
+        binidx = (data[i] & mask) >> bstart;
+        int old = atomicAdd(&bins[binidx], 1);
     }
 
     __syncthreads();
@@ -89,10 +91,10 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
 
     for (int i = 0; i < 4; i++)
     {
-        // if  glb_memoffset < N - ??
-        loc_data[loc_memoffset + i] = data[i];
+        if  ((loc_memoffset + i) < block_size){
+            loc_data[loc_memoffset + i] = data[i];
+        }
     }
 
-    //sort local data using counting sort
 }
 #endif
