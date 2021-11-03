@@ -1,4 +1,4 @@
-B#ifndef KERNELS
+#ifndef KERNELS
 #define KERNELS
 
 #include "cub.cuh"
@@ -56,8 +56,11 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
     const int glb_threadidx = getGlobalIdx();
     const int loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
+       
+    if (loc_threadidx < 16)
+      local_histogram[loc_threadidx] = 0;
+      
     
- 
     // This is not coalesced on memory (we should stride instead of taking 4 seq)
     const int glb_memoffset = 4 * glb_threadidx;
     const int loc_memoffset = 4 * loc_threadidx;
@@ -112,7 +115,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
       {
 	if ((glb_memoffset + i) < N){
 	 uint32_t idx = scan_local_histogram[binsForElms[i]] + ranksInBins[i];
-	 //	 loc_data[idx] = data[i];
+       	 loc_data[idx] = data[i];
 	}
       }
 
