@@ -55,6 +55,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
     const int glb_threadidx = getGlobalIdx();
     const int loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
+    
 
  
     // This is not coalesced on memory (we should stride instead of taking 4 seq)
@@ -64,20 +65,12 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // Loop over 4 data entries.
     for (int i = 0; i < 4; i++)
     {
-        // if  glb_memoffset < N - ??
-        if (((glb_memoffset + i) <= N) && ((loc_memoffset + i) <= block_size)){
+        if (((glb_memoffset + i) < N) && ((loc_memoffset + i) < block_size)){
             data[i] = data_keys_in[glb_memoffset + i];
             loc_data[loc_memoffset + i] = data[i];
         }
     }
 
-    /* is this coalesced?
-  int glb_memoffset = glb_threadidx;
-  int loc_memoffset = loc_threadidx;
-  for(int i=0; i<4; i++){
-    data[i] = data_keys_in[i*glb_memoffset];
-    loc_data[loc_memoffset*i] = data[i];
-  }*/
 
     // Sync needed after loading all data in.
     __syncthreads();
@@ -125,7 +118,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
 
     // WRITE LOCAL HISTOGRAMS TO GLOBAL
     if (loc_threadidx == 0){
-        uint32_t p = blockDim.x * blockDim.y;
+        uint32_t p = gridDim.x * gridDim.y;
         printf("%d\n",p);
         for (size_t i = 0; i < 16; i++)
         {
@@ -137,12 +130,12 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
 
 
     // WRITE SORTED TILE TO GLOBAL
-    // for (int i = 0; i < 4; i++)
-    //     {
-    //         if (((glb_memoffset + i) <= N) && ((loc_memoffset + i) <= block_size)){
-    //             data_keys_in[glb_memoffset + i] = loc_data[loc_memoffset+i];
-    //         }
-    //     }
+    for (int i = 0; i < 4; i++)
+         {
+             if (((glb_memoffset + i) < N) && ((loc_memoffset + i) < block_size)){
+                 data_keys_in[glb_memoffset + i] = loc_data[loc_memoffset+i];
+             }
+         }
 
 
 

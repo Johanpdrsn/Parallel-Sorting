@@ -112,10 +112,10 @@ int main (int argc, char * argv[]) {
 
     //  ** New kernel section ** 
     // setup execution parameters
-    int dimbl = (int) (sqrt(ceil(N/1024))) + 1;
+    int dimbl = (int) ceil(sqrt(ceil(N/1024)));
     dim3 block(16, 16, 1); // 256 threads per block
-    dim3 grid (dimbl, dimbl, 1); 
-
+    dim3 grid (dimbl+1, dimbl, 1); 
+    printf("%d %d\n", dimbl, N);
     //Allocate and Initialize Host data with random values
     uint32_t* keys  = (uint32_t*) malloc(N*sizeof(uint32_t));
     uint32_t* keys_res  = (uint32_t*) malloc(N*sizeof(uint32_t));
@@ -128,7 +128,7 @@ int main (int argc, char * argv[]) {
     cudaSucceeded(cudaMalloc((void**) &keys_in,  N * sizeof(uint32_t)));
     cudaSucceeded(cudaMemcpy(keys_in, keys, N * sizeof(uint32_t), cudaMemcpyHostToDevice));
     cudaSucceeded(cudaMalloc((void**) &keys_out, N * sizeof(uint32_t)));
-    cudaSucceeded(cudaMalloc((void**) &glb_bins, dimbl * dimbl * 16 * sizeof(uint32_t)));
+    cudaSucceeded(cudaMalloc((void**) &glb_bins, dimbl * 16 * sizeof(uint32_t)));
 
     //    double elapsed = sortRedByKeyCUB( keys_in, deys_out, N );
     double elapsedKernel;
@@ -149,10 +149,10 @@ int main (int argc, char * argv[]) {
     cudaDeviceSynchronize();
     cudaCheckError();
     
-    for (size_t i = 0; i < N; i++)
-    {
-        printf("%d\n", keys_res[i]);
-    }
+    //for (size_t i = 0; i < N; i++)
+      // {
+      // printf("%d\n", keys_res[i]);
+	//    }
     
 
 
