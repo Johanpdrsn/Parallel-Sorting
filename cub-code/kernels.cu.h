@@ -65,7 +65,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // Loop over 4 data entries.
     for (int i = 0; i < 4; i++)
     {
-        if (((glb_memoffset + i) < N) && ((loc_memoffset + i) < block_size)){
+        if (((glb_memoffset + i) <= N) && ((loc_memoffset + i) <= block_size)){
             data[i] = data_keys_in[glb_memoffset + i];
             loc_data[loc_memoffset + i] = data[i];
         }
@@ -129,11 +129,11 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
 
 
 
-    // WRITE SORTED TILE TO GLOBAL
+    // // WRITE SORTED TILE TO GLOBAL
     for (int i = 0; i < 4; i++)
          {
              if (((glb_memoffset + i) < N) && ((loc_memoffset + i) < block_size)){
-                 data_keys_in[glb_memoffset + i] = loc_data[loc_memoffset+i];
+                 data_keys_out[glb_memoffset + i] = loc_data[loc_memoffset+i];
              }
          }
 
