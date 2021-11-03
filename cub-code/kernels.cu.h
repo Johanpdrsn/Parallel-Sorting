@@ -1,4 +1,4 @@
-#ifndef KERNELS
+B#ifndef KERNELS
 #define KERNELS
 
 #include "cub.cuh"
@@ -47,16 +47,16 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     uint32_t data[4];
     uint32_t binsForElms[4];
     uint32_t ranksInBins[4];
-
     
-
+    
+    
+    
     //memset here?
 
     const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
     const int glb_threadidx = getGlobalIdx();
     const int loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
     
-
  
     // This is not coalesced on memory (we should stride instead of taking 4 seq)
     const int glb_memoffset = 4 * glb_threadidx;
@@ -65,12 +65,12 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // Loop over 4 data entries.
     for (int i = 0; i < 4; i++)
     {
-        if (((glb_memoffset + i) <= N) && ((loc_memoffset + i) <= block_size)){
+        if ((glb_memoffset + i) < N){
             data[i] = data_keys_in[glb_memoffset + i];
             loc_data[loc_memoffset + i] = data[i];
         }
     }
-
+    
 
     // Sync needed after loading all data in.
     __syncthreads();
@@ -83,13 +83,15 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // Loop over 4 data entries
     for (int i = 0; i < 4; i++)
     {
+      if ((glb_memoffset + i) < N){
         binidx = (data[i] & mask) >> bstart;
         int old = atomicAdd(&local_histogram[binidx], 1);
 
         ranksInBins[i] = old;
         binsForElms[i] = binidx;
+      }
     }
-
+   
     // Need to sync, cannot sort before the histogram is done.
     __syncthreads();
 
@@ -102,24 +104,24 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
             scan_local_histogram[i] = local_histogram[i-1] + scan_local_histogram[i-1];
         }
     }
-    
+   
     __syncthreads();
 
     // SORT LOCAL TILE
     for (int i = 0; i < 4; i++)
-    {
-        if  ((loc_memoffset + i) < block_size){
-            uint idx = scan_local_histogram[binsForElms[i]] + ranksInBins[i];
-            loc_data[idx] = data[i];
-        }
-    }
+      {
+	if ((glb_memoffset + i) < N){
+	 uint32_t idx = scan_local_histogram[binsForElms[i]] + ranksInBins[i];
+	 //	 loc_data[idx] = data[i];
+	}
+      }
 
     __syncthreads();
+    
 
     // WRITE LOCAL HISTOGRAMS TO GLOBAL
     if (loc_threadidx == 0){
         uint32_t p = gridDim.x * gridDim.y;
-        printf("%d\n",p);
         for (size_t i = 0; i < 16; i++)
         {
             glb_histogram[p*i+blockidx] = local_histogram[i];
@@ -132,9 +134,9 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // // WRITE SORTED TILE TO GLOBAL
     for (int i = 0; i < 4; i++)
          {
-             if (((glb_memoffset + i) < N) && ((loc_memoffset + i) < block_size)){
-                 data_keys_out[glb_memoffset + i] = loc_data[loc_memoffset+i];
-             }
+	   if ((glb_memoffset + i) < N){
+             data_keys_out[glb_memoffset + i] = loc_data[loc_memoffset+i];
+	   }
          }
 
 

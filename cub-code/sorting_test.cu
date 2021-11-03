@@ -129,6 +129,7 @@ int main (int argc, char * argv[]) {
     cudaSucceeded(cudaMemcpy(keys_in, keys, N * sizeof(uint32_t), cudaMemcpyHostToDevice));
     cudaSucceeded(cudaMalloc((void**) &keys_out, N * sizeof(uint32_t)));
     cudaSucceeded(cudaMalloc((void**) &glb_bins, dimbl * dimbl * 16 * sizeof(uint32_t)));
+    cudaMemset(glb_bins, 0, dimbl * dimbl * 16 * sizeof(uint32_t));
 
     //    double elapsed = sortRedByKeyCUB( keys_in, deys_out, N );
     double elapsedKernel;
@@ -149,10 +150,10 @@ int main (int argc, char * argv[]) {
     cudaDeviceSynchronize();
     cudaCheckError();
     
-    for (size_t i = 0; i < N; i++)
+    /*    for (size_t i = 0; i < N; i++)
     {
         printf("%d\n", keys_res[i]);
-    }
+	}*/
     
 
 
