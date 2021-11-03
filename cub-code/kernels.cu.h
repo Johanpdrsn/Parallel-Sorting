@@ -40,9 +40,11 @@ template <int block_size> //<class ElTp> <- we will need this to generalize
 __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t *glb_bins, int N, int iter)
 {
     __shared__ uint32_t loc_data[block_size];
-    __shared__ uint32_t bins[16];
+    __shared__ uint32_t local_histogram[16];
 
     uint32_t data[4];
+    uint32_t binsForElms[4];
+    uint32_t ranksInBins[4];
 
     //memset here?
 
@@ -53,7 +55,8 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // This is not coalesced on memory (we should stride instead of taking 4 seq)
     int glb_memoffset = 4 * glb_threadidx;
     int loc_memoffset = 4 * loc_threadidx;
-    // Loop over 4 data entries
+    // Read data from global memory.
+    // Loop over 4 data entries.
     for (int i = 0; i < 4; i++)
     {
         // if  glb_memoffset < N - ??
@@ -71,24 +74,32 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     loc_data[loc_memoffset*i] = data[i];
   }*/
 
+    // Sync needed after loading all data in.
     __syncthreads();
 
     int bstart = iter * 4;
     int binidx;
+    
     uint32_t mask;
     mask = (15 << bstart);
     // Loop over 4 data entries
     for (int i = 0; i < 4; i++)
     {
         binidx = (data[i] & mask) >> bstart;
-        int old = atomicAdd(&bins[binidx], 1);
+        int old = atomicAdd(&local_histogram[binidx], 1);
+
+        ranksInBins[i] = old;
+        binsForElms[i] = binidx;
     }
 
+    // Need to sync, cannot sort before the histogram is done.
     __syncthreads();
 
-    // THIS IS WRONG - THE WHOLE SHARED DATA NEEDS TO BE SORTED HERE
-    //countSort(data);
 
+    
+
+
+    // This is sorting
     for (int i = 0; i < 4; i++)
     {
         if  ((loc_memoffset + i) < block_size){
