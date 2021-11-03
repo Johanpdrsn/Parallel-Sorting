@@ -37,7 +37,7 @@ void countSort(char arr[])
 }
 
 template <int block_size> //<class ElTp> <- we will need this to generalize
-__global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t *glb_bins, int N, int iter)
+__global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t *glb_histogram, int N, int iter)
 {
     __shared__ uint32_t loc_data[block_size];
     __shared__ uint32_t local_histogram[16];
@@ -112,7 +112,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     
     __syncthreads();
 
-    // This is sorting
+    // SORT LOCAL TILE
     for (int i = 0; i < 4; i++)
     {
         if  ((loc_memoffset + i) < block_size){
@@ -123,7 +123,20 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
 
     __syncthreads();
 
+    // WRITE LOCAL HISTOGRAMS TO GLOBAL
+    if (loc_threadidx == 0){
+        uint32_t p = blockDim.x * blockDim.y;
+        printf("%d\n",p);
+        for (size_t i = 0; i < 16; i++)
+        {
+            glb_histogram[p*i+blockidx] = local_histogram[i];
+        }
+    }
 
+
+
+
+    // WRITE SORTED TILE TO GLOBAL
     // for (int i = 0; i < 4; i++)
     //     {
     //         if (((glb_memoffset + i) <= N) && ((loc_memoffset + i) <= block_size)){
