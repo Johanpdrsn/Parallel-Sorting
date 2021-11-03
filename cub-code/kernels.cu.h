@@ -100,7 +100,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // Need to sync, cannot sort before the histogram is done.
     __syncthreads();
 
-
+    // SCAN LOCAL HISTOGRAM
     for (size_t i=0; i<16; i++){
         if (i==0){
             scan_local_histogram[i] = 0;
