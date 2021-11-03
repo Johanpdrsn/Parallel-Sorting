@@ -121,7 +121,6 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
 
     __syncthreads();
     
-
     // WRITE LOCAL HISTOGRAMS TO GLOBAL
     if (loc_threadidx == 0){
         uint32_t p = gridDim.x * gridDim.y;

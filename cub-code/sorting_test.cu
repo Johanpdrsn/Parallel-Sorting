@@ -117,6 +117,8 @@ int main (int argc, char * argv[]) {
     dim3 grid (dimbl, dimbl, 1); 
 
     //Allocate and Initialize Host data with random values
+    
+    uint32_t* global_histogram_output  = (uint32_t*) malloc(dimbl * dimbl * 16 *sizeof(uint32_t)); // todo:fix size, but who cares
     uint32_t* keys  = (uint32_t*) malloc(N*sizeof(uint32_t));
     uint32_t* keys_res  = (uint32_t*) malloc(N*sizeof(uint32_t));
     randomInitNat(keys, N, N/10);
@@ -150,11 +152,21 @@ int main (int argc, char * argv[]) {
     cudaDeviceSynchronize();
     cudaCheckError();
     
-    /*    for (size_t i = 0; i < N; i++)
-    {
-        printf("%d\n", keys_res[i]);
-	}*/
     
+    cudaMemcpy(global_histogram_output, glb_bins, dimbl * dimbl* 16 *sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    cudaCheckError();
+    
+
+    printf("cpu\n");
+    for (size_t i = 0; i < N; i++)
+      {
+        //printf("%d\n", keys_res[i]);
+      }
+    for (size_t i = 0; i < 16; i++)
+      {
+        printf("%d\n", global_histogram_output[i]);
+      }
 
 
     bool successKernel = validateZ(keys_res, N);
@@ -167,6 +179,5 @@ int main (int argc, char * argv[]) {
 
 
     return success ? 0 : 1;
-
 
 }
