@@ -18,8 +18,9 @@ bool validateZ(Z* A, uint32_t sizeAB) {
 
 void randomInitNat(uint32_t* data, const uint32_t size, const uint32_t H) {
     for (int i = 0; i < size; ++i) {
-        unsigned long int r = rand();
+        unsigned long int r = rand() % 16;
         data[i] = r % H;
+        
     }
 }
 
@@ -134,7 +135,7 @@ int main (int argc, char * argv[]) {
     struct timeval t_start, t_end, t_diff;
     gettimeofday(&t_start, NULL);
 
-    for(int q=0; q<GPU_RUNS; q++) {
+    for(int q=0; q<1; q++) {
       kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,0);
     }
     cudaDeviceSynchronize();
@@ -148,6 +149,12 @@ int main (int argc, char * argv[]) {
     cudaDeviceSynchronize();
     cudaCheckError();
     
+    for (size_t i = 0; i < N; i++)
+    {
+        printf("%d\n", keys_res[i]);
+    }
+    
+
 
     bool successKernel = validateZ(keys_res, N);
 

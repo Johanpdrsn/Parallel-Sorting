@@ -42,25 +42,30 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     __shared__ uint32_t loc_data[block_size];
     __shared__ uint32_t local_histogram[16];
 
+    uint32_t scan_local_histogram[16];
+
     uint32_t data[4];
     uint32_t binsForElms[4];
     uint32_t ranksInBins[4];
 
+    
+
     //memset here?
 
-    int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
-    int glb_threadidx = getGlobalIdx();
-    int loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
+    const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
+    const int glb_threadidx = getGlobalIdx();
+    const int loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
 
+ 
     // This is not coalesced on memory (we should stride instead of taking 4 seq)
-    int glb_memoffset = 4 * glb_threadidx;
-    int loc_memoffset = 4 * loc_threadidx;
+    const int glb_memoffset = 4 * glb_threadidx;
+    const int loc_memoffset = 4 * loc_threadidx;
     // Read data from global memory.
     // Loop over 4 data entries.
     for (int i = 0; i < 4; i++)
     {
         // if  glb_memoffset < N - ??
-        if (((glb_memoffset + i) < N) && ((loc_memoffset + i) < block_size)){
+        if (((glb_memoffset + i) <= N) && ((loc_memoffset + i) <= block_size)){
             data[i] = data_keys_in[glb_memoffset + i];
             loc_data[loc_memoffset + i] = data[i];
         }
@@ -96,16 +101,38 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     __syncthreads();
 
 
+    for (size_t i=0; i<16; i++){
+        if (i==0){
+            scan_local_histogram[i] = 0;
+        }
+        else{
+            scan_local_histogram[i] = local_histogram[i-1] + scan_local_histogram[i-1];
+        }
+    }
     
-
+    __syncthreads();
 
     // This is sorting
     for (int i = 0; i < 4; i++)
     {
         if  ((loc_memoffset + i) < block_size){
-            loc_data[loc_memoffset + i] = data[i];
+            uint idx = scan_local_histogram[binsForElms[i]] + ranksInBins[i];
+            loc_data[idx] = data[i];
         }
     }
+
+    __syncthreads();
+
+
+    // for (int i = 0; i < 4; i++)
+    //     {
+    //         if (((glb_memoffset + i) <= N) && ((loc_memoffset + i) <= block_size)){
+    //             data_keys_in[glb_memoffset + i] = loc_data[loc_memoffset+i];
+    //         }
+    //     }
+
+
+
 
 }
 #endif

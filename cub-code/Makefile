@@ -1,10 +1,10 @@
 CUB=cub-1.8.0
-CFLAGS= -g -o
+CFLAGS= -g
 all: cub-sort
 
 cub-sort: sorting_test.cu helper.cu.h
-	nvcc -I$(CUB)/cub $(CFLAGS) test-cub sorting_test.cu
-	./test-cub 100000000
+	nvcc -I$(CUB)/cub $(CFLAGS) -o test-cub sorting_test.cu
+	./test-cub 1023
 
 cub-compile: sorting_test.cu helper.cu.h
 	nvcc -I$(CUB)/cub $(CFLAGS) test-cub sorting_test.cu
