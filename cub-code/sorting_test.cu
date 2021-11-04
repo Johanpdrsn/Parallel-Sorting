@@ -25,7 +25,7 @@ bool validateZ(Z* A, uint32_t sizeAB) {
 
 void randomInitNat(uint32_t* data, const uint32_t size, const uint32_t H) {
     for (int i = 0; i < size; ++i) {
-        unsigned long int r = rand()%127;
+        unsigned long int r = rand()%32;
         data[i] = r % H;
         
     }
