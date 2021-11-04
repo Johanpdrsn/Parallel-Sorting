@@ -12,6 +12,18 @@ __device__ int getGlobalIdx()
     return threadId;
 }
 
+
+
+template<class T>
+__device__ void plus_scan(T *x, int n)
+{
+    for (size_t i = 1; i < n; i++)
+    {
+        x[i] += x[i-1];
+    }
+}
+
+
 //Unstable countSort - geeksforgeeks implementation
 void countSort(char arr[])
 {
@@ -42,7 +54,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     __shared__ uint32_t loc_data[block_size];
     __shared__ uint32_t local_histogram[16];
 
-    uint32_t scan_local_histogram[16];
+    __shared__ uint32_t scan_local_histogram[16];
 
     uint32_t data[4];
     uint32_t binsForElms[4];
@@ -64,7 +76,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // Loop over 4 data entries.
     for (int i = 0; i < 4; i++)
     {
-        if ((glb_memoffset + i) < N)
+        if ((glb_memoffset + i) <= N)
         {
             data[i] = data_keys_in[glb_memoffset + i];
             loc_data[loc_memoffset + i] = data[i];
@@ -85,44 +97,62 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
         if ((glb_memoffset + i) < N)
         {
             binidx = (data[i] & mask) >> bstart;
-            int old = atomicAdd(&local_histogram[binidx], 1);
-
-            ranksInBins[i] = old;
+            ranksInBins[i] = atomicInc(&local_histogram[binidx], 1024);
             binsForElms[i] = binidx;
         }
     }
 
+
+
+    __syncthreads();
+    if(loc_threadidx == 0){
+    for (size_t i = 0; i < 16; i++)
+        {
+            scan_local_histogram[i] = local_histogram[i];
+        }
+    }
+
+    __syncthreads();
+    plus_scan(scan_local_histogram, 16);
+    
+
+    
     // Need to sync, cannot sort before the histogram is done.
     __syncthreads();
 
     // SCAN LOCAL HISTOGRAM
-    for (size_t i = 0; i < 16; i++)
-    {
-        if (i == 0)
-        {
-            scan_local_histogram[i] = 0;
-        }
-        else
-        {
-            scan_local_histogram[i] = local_histogram[i-1] + scan_local_histogram[i - 1];
-        }
-    }
+    // for (size_t i = 0; i < 16; i++)
+    // {
+    //     if (i == 0)
+    //     {
+    //         scan_local_histogram[i] = 0;
+    //     }
+    //     else
+    //     {
+    //         scan_local_histogram[i] = local_histogram[i-1] + scan_local_histogram[i - 1];
+    //     }
+    // }
 
-    __syncthreads();
 
     // SORT LOCAL TILE
-    for (int i = 0; i < 4; i++)
+    for (int i = 3; i >= 0; i--)
     {
-        if ((glb_memoffset + i) < N)
+        if ((glb_memoffset + i) <= N)
         {
-            uint32_t idx = scan_local_histogram[binsForElms[i]] + ranksInBins[i];
-            loc_data[idx] = data[i];
+            //uint32_t idx = scan_local_histogram[binsForElms[i]] + ranksInBins[i];
+            //loc_data[idx] = data[i];
+
+            uint32_t binidx = (data[i] & mask) >> bstart;
+            int old = atomicDec(&scan_local_histogram[binidx],1024);
+
+            loc_data[old] = data[i];
+            //printf("%d: %d: %d\n", binidx, i, atomicDec(&scan_local_histogram[binidx],1000000000));
         }
     }
 
 
 
-    __syncthreads();
+     __syncthreads();
 
     // WRITE LOCAL HISTOGRAMS TO GLOBAL
     if (loc_threadidx == 0)
@@ -216,6 +246,8 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
     }
 
     __syncthreads();
+
+
 
     //local hist
     for (int i = 0; i < 16; i++)

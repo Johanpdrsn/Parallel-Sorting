@@ -6,6 +6,13 @@
 
 #define blockMemSize 1024
 
+void printBits(int val){
+    for(unsigned int mask = 0x80000000; mask; mask >>= 1){
+         printf("%d", !!(mask & val));
+    }
+    printf("\n");
+}
+
 template<class Z>
 bool validateZ(Z* A, uint32_t sizeAB) {
     for(uint32_t i = 1; i < sizeAB; i++)
@@ -18,7 +25,7 @@ bool validateZ(Z* A, uint32_t sizeAB) {
 
 void randomInitNat(uint32_t* data, const uint32_t size, const uint32_t H) {
     for (int i = 0; i < size; ++i) {
-        unsigned long int r = rand() % 16;
+        unsigned long int r = rand()%127;
         data[i] = r % H;
         
     }
@@ -125,6 +132,7 @@ int main (int argc, char * argv[]) {
 
     //Allocate and Initialize Device data
     uint32_t* keys_in;
+    uint32_t* keys_sort;
     uint32_t* keys_out;
     uint32_t* glb_bins;
     uint32_t* scanned_glb_bins;
@@ -132,10 +140,13 @@ int main (int argc, char * argv[]) {
     uint32_t num_glb_bins = dimbl * dimbl * 16 * sizeof(uint32_t);
     cudaSucceeded(cudaMalloc((void**) &keys_in,  N * sizeof(uint32_t)));
     cudaSucceeded(cudaMemcpy(keys_in, keys, N * sizeof(uint32_t), cudaMemcpyHostToDevice));
+    cudaSucceeded(cudaMalloc((void**) &keys_sort,  N * sizeof(uint32_t)));
     cudaSucceeded(cudaMalloc((void**) &keys_out, N * sizeof(uint32_t)));
+
     cudaSucceeded(cudaMalloc((void**) &glb_bins, num_glb_bins));
     cudaSucceeded(cudaMalloc((void**) &scanned_glb_bins, num_glb_bins));
     cudaMemset(glb_bins, 0, dimbl * dimbl * 16 * sizeof(uint32_t));
+    cudaMemset(scanned_glb_bins, 0, dimbl * dimbl * 16 * sizeof(uint32_t));
 
     //    double elapsed = sortRedByKeyCUB( keys_in, deys_out, N );
     double elapsedKernel;
@@ -149,10 +160,13 @@ int main (int argc, char * argv[]) {
     cudaMalloc(&d_temp_storage, temp_storage_bytes);
     
     for(int q=0; q<GPU_RUNS; q++) {
-        kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,0);
-        //kern3<blockMemSize><<< grid, block >>>(glb_bins, scanned_glb_bins, num_glb_bins);
-        cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);	
-	    kern4<blockMemSize><<< grid, block >>>(scanned_glb_bins, keys_out, keys_in, N ,0, glb_bins);
+        for (int iter=0; iter<2; iter++){
+            kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,iter);
+            //kern3<blockMemSize><<< grid, block >>>(glb_bins, scanned_glb_bins, num_glb_bins);
+            cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);	
+            kern4<blockMemSize><<< grid, block >>>(scanned_glb_bins, keys_out, keys_sort, N ,iter, glb_bins);
+            keys_in = keys_sort;
+        }
     }
     cudaDeviceSynchronize();
 
@@ -161,38 +175,30 @@ int main (int argc, char * argv[]) {
     elapsedKernel = (t_diff.tv_sec*1e6+t_diff.tv_usec) / ((double)GPU_RUNS);
 
 
-    cudaMemcpy(keys_res, keys_in, N*sizeof(uint32_t), cudaMemcpyDeviceToHost); // todo: fix keys_in
+    cudaMemcpy(keys_res, keys_sort, N*sizeof(uint32_t), cudaMemcpyDeviceToHost); // todo: fix keys_in
     cudaDeviceSynchronize();
     cudaCheckError();
     
     
     // for (size_t i = 0; i < N; i++)
     //   {
-	// printf("%d\n", keys_res[i]);
+	//     printf("%d\n",keys_res[i]);
+    //     //printBits(keys_res[i]);
     //   }
     
     cudaMemcpy(global_histogram_output, glb_bins, dimbl * dimbl* 16 *sizeof(uint32_t), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     cudaCheckError();
     
-    /*
-    printf("cpu\n");
-    for (size_t i = 0; i < N; i++)
-      {
-        //printf("%d\n", keys_res[i]);
-      }
-    for (size_t i = 0; i < 16; i++)
-      {
-        printf("%d\n", global_histogram_output[i]);
-      }
-    */
+
 
     bool successKernel = validateZ(keys_res, N);
 
     printf("Our sorting for N=%lu runs in: %.2f us, VALID: %d\n", N, elapsedKernel, successKernel);
 
     // Cleanup and closing
-    cudaFree(keys_in); cudaFree(keys_out); cudaFree(glb_bins);
+    cudaFree(keys_in); cudaFree(keys_out); cudaFree(keys_sort); cudaFree(glb_bins); cudaFree(scanned_glb_bins);
+    cudaFree(d_temp_storage);
     free(keys); free(keys_res);
 
 
