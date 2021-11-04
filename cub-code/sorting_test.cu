@@ -125,10 +125,14 @@ int main (int argc, char * argv[]) {
     uint32_t* keys_in;
     uint32_t* keys_out;
     uint32_t* glb_bins;
+    uint32_t* scanned_glb_bins;
+
+    uint32_t num_glb_bins = dimbl * dimbl * 16 * sizeof(uint32_t);
     cudaSucceeded(cudaMalloc((void**) &keys_in,  N * sizeof(uint32_t)));
     cudaSucceeded(cudaMemcpy(keys_in, keys, N * sizeof(uint32_t), cudaMemcpyHostToDevice));
     cudaSucceeded(cudaMalloc((void**) &keys_out, N * sizeof(uint32_t)));
-    cudaSucceeded(cudaMalloc((void**) &glb_bins, dimbl * dimbl * 16 * sizeof(uint32_t)));
+    cudaSucceeded(cudaMalloc((void**) &glb_bins, num_glb_bins));
+    cudaSucceeded(cudaMalloc((void**) &scanned_glb_bins, num_glb_bins));
     cudaMemset(glb_bins, 0, dimbl * dimbl * 16 * sizeof(uint32_t));
 
     //    double elapsed = sortRedByKeyCUB( keys_in, deys_out, N );
@@ -136,8 +140,16 @@ int main (int argc, char * argv[]) {
     struct timeval t_start, t_end, t_diff;
     gettimeofday(&t_start, NULL);
 
+    // Initialize vars for devicescan
+    void     *d_temp_storage = NULL;
+    size_t   temp_storage_bytes = 0;
+    cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);  
+    cudaMalloc(&d_temp_storage, temp_storage_bytes);
+    
     for(int q=0; q<1; q++) {
-      kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,0);
+        kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,0);
+        //kern3<blockMemSize><<< grid, block >>>(glb_bins, scanned_glb_bins, num_glb_bins);
+        cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);
     }
     cudaDeviceSynchronize();
 
@@ -150,10 +162,10 @@ int main (int argc, char * argv[]) {
     cudaDeviceSynchronize();
     cudaCheckError();
     
-    /*    for (size_t i = 0; i < N; i++)
-    {
-        printf("%d\n", keys_res[i]);
-	}*/
+    // for (size_t i = 0; i < N; i++)
+    // {
+    //     printf("%d\n", keys_res[i]);
+	// }
     
 
 
