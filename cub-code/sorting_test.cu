@@ -151,7 +151,8 @@ int main (int argc, char * argv[]) {
     for(int q=0; q<1; q++) {
         kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,0);
         //kern3<blockMemSize><<< grid, block >>>(glb_bins, scanned_glb_bins, num_glb_bins);
-        cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);
+        cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);	
+	kern4<blockMemSize><<< grid, block >>>(scanned_glb_bins, keys_out, keys_in, N ,0);
     }
     cudaDeviceSynchronize();
 
@@ -160,20 +161,21 @@ int main (int argc, char * argv[]) {
     elapsedKernel = (t_diff.tv_sec*1e6+t_diff.tv_usec) / ((double)GPU_RUNS);
 
 
-    cudaMemcpy(keys_res, keys_out, N*sizeof(uint32_t), cudaMemcpyDeviceToHost);
+    cudaMemcpy(keys_res, keys_in, N*sizeof(uint32_t), cudaMemcpyDeviceToHost); // todo: fix keys_in
     cudaDeviceSynchronize();
     cudaCheckError();
     
-    // for (size_t i = 0; i < N; i++)
-    // {
-    //     printf("%d\n", keys_res[i]);
-	// }
-    
+    /*
+    for (size_t i = 0; i < N; i++)
+      {
+	printf("%d\n", keys_res[i]);
+      }
+    */
     cudaMemcpy(global_histogram_output, glb_bins, dimbl * dimbl* 16 *sizeof(uint32_t), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     cudaCheckError();
     
-
+    /*
     printf("cpu\n");
     for (size_t i = 0; i < N; i++)
       {
@@ -183,7 +185,7 @@ int main (int argc, char * argv[]) {
       {
         printf("%d\n", global_histogram_output[i]);
       }
-
+    */
 
     bool successKernel = validateZ(keys_res, N);
 

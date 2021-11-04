@@ -121,11 +121,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     }
 
     __syncthreads();
-<<<<<<< HEAD
 
-=======
-    
->>>>>>> ea7b3be234d187438ee336a0e8ed50165bead19d
     // WRITE LOCAL HISTOGRAMS TO GLOBAL
     if (loc_threadidx == 0)
     {
@@ -172,6 +168,105 @@ __global__ void kern3(uint32_t *glb_histogram_in, uint32_t *glb_histogram_out, i
     {
         glb_histogram_out[blockId * 16 + i] = thread_data[i];
     }
+}
+
+template <int block_size> //<class ElTp> <- we will need this to generalize
+__global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_t *glb_data_out ,int N, int iter)
+{
+    __shared__ uint32_t loc_data[block_size];
+    __shared__ uint32_t local_histogram[16];
+
+    uint32_t scan_local_histogram[16];
+
+    uint32_t data[4];
+    uint32_t binsForElms[4];
+    uint32_t ranksInBins[4];
+
+    //memset here?
+
+    const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
+    const int glb_threadidx = getGlobalIdx();
+    const int loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
+
+    if (loc_threadidx < 16)
+        local_histogram[loc_threadidx] = 0;
+
+    // This is not coalesced on memory (we should stride instead of taking 4 seq)
+    const int glb_memoffset = 4 * glb_threadidx;
+    const int loc_memoffset = 4 * loc_threadidx;
+    const int p = gridDim.x * gridDim.y;
+
+    int32_t elm;
+    int32_t elmBin;
+    int32_t glbScanElm;
+    int32_t loc_scan_offset;
+    // Read data from global memory.
+    // Loop over 4 data entries.
+    for (int i = 0; i < 4; i++)
+    {
+        if ((glb_memoffset + i) < N)
+	  {
+	    
+	    data[i] = glb_data_in[glb_memoffset + i];
+	    loc_data[loc_memoffset + i] = data[i];
+	  }
+    }
+
+    __syncthreads();
+
+    int local_scanned_histogram[16];
+    //int local_histogram[16];
+    int x;
+    for (int i = 0; i < 16; i++)
+    { 
+      if (i == 0){
+	//local_histogram[i] = 0;
+	local_scanned_histogram[i] =0;
+      }
+      else {
+	x = glb_histogram_in[blockidx + p * i] - glb_histogram_in[blockidx + p * i - 1];
+	local_scanned_histogram[i] = x + local_scanned_histogram[i-1]; 
+      }
+    }
+    /*
+    if (glb_threadidx == 0) {
+      for (size_t i = 0; i < 16; i++) {
+	printf("%d : scanned\n", local_scanned_histogram[i]);
+	       }
+    }
+    */
+    
+    __syncthreads();
+
+    for (int i = 0; i < 4; i++)
+    {
+        if ((glb_memoffset + i) < N)
+	  {
+	    
+            elm = loc_data[loc_threadidx*4 + i];
+
+	    // binOf function
+	    int bstart = iter * 4;
+	    uint32_t mask;
+	    mask = (15 << bstart);
+
+            elmBin = (data[i] & mask) >> bstart;   
+	    
+	    glbScanElm = glb_histogram_in[p * elmBin + blockidx];
+	    
+	    loc_scan_offset = local_scanned_histogram[elmBin]; 
+	    
+	    glb_data_out[glbScanElm + (loc_threadidx*4 + i - loc_scan_offset)] = elm;
+	    
+	}
+    }
+    /*
+    if (loc_threadidx == 0) {
+      for (size_t i = 0; i < N; i++){
+	printf("%d \n", glb_data_out[i]);
+      }
+    }
+    */
 }
 
 #endif
