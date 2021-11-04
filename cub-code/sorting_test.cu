@@ -148,11 +148,11 @@ int main (int argc, char * argv[]) {
     cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);  
     cudaMalloc(&d_temp_storage, temp_storage_bytes);
     
-    for(int q=0; q<1; q++) {
+    for(int q=0; q<GPU_RUNS; q++) {
         kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,0);
         //kern3<blockMemSize><<< grid, block >>>(glb_bins, scanned_glb_bins, num_glb_bins);
         cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);	
-	kern4<blockMemSize><<< grid, block >>>(scanned_glb_bins, keys_out, keys_in, N ,0);
+	    kern4<blockMemSize><<< grid, block >>>(scanned_glb_bins, keys_out, keys_in, N ,0, glb_bins);
     }
     cudaDeviceSynchronize();
 
@@ -165,12 +165,12 @@ int main (int argc, char * argv[]) {
     cudaDeviceSynchronize();
     cudaCheckError();
     
-    /*
-    for (size_t i = 0; i < N; i++)
-      {
-	printf("%d\n", keys_res[i]);
-      }
-    */
+    
+    // for (size_t i = 0; i < N; i++)
+    //   {
+	// printf("%d\n", keys_res[i]);
+    //   }
+    
     cudaMemcpy(global_histogram_output, glb_bins, dimbl * dimbl* 16 *sizeof(uint32_t), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();
     cudaCheckError();
