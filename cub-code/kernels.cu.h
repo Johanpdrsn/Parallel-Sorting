@@ -121,7 +121,11 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     }
 
     __syncthreads();
+<<<<<<< HEAD
 
+=======
+    
+>>>>>>> ea7b3be234d187438ee336a0e8ed50165bead19d
     // WRITE LOCAL HISTOGRAMS TO GLOBAL
     if (loc_threadidx == 0)
     {
