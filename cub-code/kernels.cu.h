@@ -62,7 +62,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     const int loc_memoffset = 4 * loc_threadidx;
     // Read data from global memory.
     // Loop over 4 data entries.
-    for (int i = 0; i <= 4; i++)
+    for (int i = 0; i < 4; i++)
     {
         if ((glb_memoffset + i) < N)
         {
@@ -186,10 +186,6 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
     uint32_t scan_local_histogram[16];
 
     uint32_t data[4];
-    uint32_t binsForElms[4];
-    uint32_t ranksInBins[4];
-
-    //memset here?
 
     const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
     const int glb_threadidx = getGlobalIdx();
@@ -222,7 +218,6 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
     __syncthreads();
 
     //local hist
-    int x;
     for (int i = 0; i < 16; i++)
     { 
         local_histogram[i] = hist[p*i+blockidx];
@@ -267,13 +262,13 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
 	    }
 
     }
+
     // if (loc_threadidx == 0 && blockidx == 0){
-    //     for (int i = 0; i < 16; i++)
+    //     for (int i = 0; i < block_size; i++)
     //     {
-    //         printf("%d\n", glb_histogram_in[i]);
+    //         printf("%d\n", loc_data[i]);
     //     }  
     // }
-
 }
 
 #endif

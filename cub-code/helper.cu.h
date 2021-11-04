@@ -8,7 +8,7 @@
 #include <sys/time.h>
 #include <time.h>
 
-#define GPU_RUNS    1
+#define GPU_RUNS    400
 
 int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
 {
