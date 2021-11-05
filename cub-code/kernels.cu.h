@@ -105,8 +105,9 @@ scanIncBlock(volatile typename OP::RedElTp *ptr, const unsigned int idx)
 }
 
 template <class OP, int block_size>
-__device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bstart)
+__device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bstart, uint32_t iter)
 {
+
     __shared__ uint32_t ps[1024];
     __shared__ uint32_t negPs[1024];
 
@@ -123,13 +124,11 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
     dat4 = loc_data[idx];
 
 
-    uint32_t p = (dat4 & mask) >> iteration;
+    uint32_t p = (dat4 & mask) >> (iteration+ (iter*4));
     uint32_t negP = 1 - p;
-
 
     ps[idx] = p;
     negPs[idx] = negP;
-
 
     __syncthreads();
 
@@ -154,6 +153,7 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
     }
 
     __syncthreads();
+    
 }
 
 template <class T>
@@ -186,8 +186,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
         local_histogram[loc_threadidx] = 0;
 
     // This is not coalesced on memory (we should stride instead of taking 4 seq)
-    const int glb_memoffset = glb_threadidx;
-    const int loc_memoffset = loc_threadidx;
+
     // Read data from global memory.
     // Loop over 4 data entries.
     {
@@ -241,19 +240,19 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
             // uint32_t binidx = (data[i] & mask) >> bstart;
             // int old = atomicAdd(&scan_local_histogram[binidx],1);
             // loc_data[old] = data[i];
-            partition2<Add<uint32_t>, block_size>(loc_data, i, bstart);
+            partition2<Add<uint32_t>, block_size>(loc_data, i, bstart, iter);
         }
     }
 
-    __syncthreads();
-    // if (loc_threadidx == 0 && blockidx == 0 && iter == 0)
+    // __syncthreads();
+    // if (loc_threadidx == 0 && blockidx == 0 && iter == 1)
     // {
     //     for (int i = 0; i < 1024; i++)
     //     {
     //         printf("%d\n", loc_data[i]);
     //     }
     // }
-    // __syncthreads();
+    __syncthreads();
 
     // WRITE LOCAL HISTOGRAMS TO GLOBAL
 
@@ -287,7 +286,7 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
 
     uint32_t scan_local_histogram[16];
 
-    uint32_t data[4];
+    uint32_t data;
 
     const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
     const int glb_threadidx = getGlobalIdx();
@@ -297,25 +296,20 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
         local_histogram[loc_threadidx] = 0;
 
     // This is not coalesced on memory (we should stride instead of taking 4 seq)
-    const int glb_memoffset = 4 * glb_threadidx;
-    const int loc_memoffset = 4 * loc_threadidx;
     const int p = gridDim.x * gridDim.y;
 
-    int32_t elm;
     int32_t elmBin;
     int32_t glbScanElm;
     int32_t loc_scan_offset;
     // Read data from global memory.
     // Loop over 4 data entries.
-    for (int i = 0; i < 4; i++)
-    {
-        if ((glb_memoffset + i) < N)
-        {
 
-            data[i] = glb_data_in[glb_memoffset + i];
-            loc_data[loc_memoffset + i] = data[i];
+    if (glb_threadidx < N){
+
+    data = glb_data_in[glb_threadidx];
+    loc_data[loc_threadidx] = data;
         }
-    }
+        
 
     __syncthreads();
 
@@ -329,7 +323,7 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
     plus_scan(scan_local_histogram, local_histogram, 16);
 
     // __syncthreads();
-    // if (loc_threadidx == 0 && blockidx == 0 && iter == 0){
+    // if (loc_threadidx == 0 && blockidx == 0 && iter == 1){
     //     for (int i = 0; i < block_size; i++)
     //     {
     //         printf("%d\n", loc_data[i]);
@@ -337,36 +331,33 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
     // }
     __syncthreads();
 
-    for (int i = 0; i < 4; i++)
+
+    if (glb_threadidx < N){
+    // binOf function
+    int bstart = iter * 4;
+    uint32_t mask;
+    mask = (15 << bstart);
+
+    elmBin = (data & mask) >> bstart;                  //V
+    glbScanElm = glb_histogram_in[p * elmBin + blockidx]; //V
+    if (elmBin == 0)
     {
-        if ((glb_memoffset + i) < N)
-        {
-
-            elm = loc_data[loc_threadidx * 4 + i]; //V
-            // binOf function
-            int bstart = iter * 4;
-            uint32_t mask;
-            mask = (15 << bstart);
-
-            elmBin = (data[i] & mask) >> bstart;                  //V
-            glbScanElm = glb_histogram_in[p * elmBin + blockidx]; //V
-            if (elmBin == 0)
-            {
-                loc_scan_offset = 0;
-            }
-            else
-            {
-                loc_scan_offset = scan_local_histogram[elmBin];
-            }
-
-            glb_data_out[glbScanElm + (loc_threadidx * 4 + i - loc_scan_offset)] = elm;
-        }
+        loc_scan_offset = 0;
     }
+    else
+    {
+        loc_scan_offset = scan_local_histogram[elmBin];
+    }
+
+    glb_data_out[glbScanElm + (loc_threadidx - loc_scan_offset)] = data;
+
+    }
+
     // __syncthreads();
-    // if (loc_threadidx == 0 && blockidx == 0 && iter == 0){
+    // if (loc_threadidx == 0 && blockidx == 0){
     //     for (int i = 0; i < block_size; i++)
     //     {
-    //         printf("%d\n", glb_data_out[i]);
+    //         printf("%d\n", loc_data[i]);
     //     }
     // }
 }
