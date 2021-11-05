@@ -220,13 +220,13 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
     // scanned local hist
     plus_scan(scan_local_histogram, local_histogram, 16);
 
-    __syncthreads();
-    if (loc_threadidx == 0 && blockidx == 0 && iter == 0){
-        for (int i = 0; i < block_size; i++)
-        {
-            printf("%d\n", loc_data[i]);
-        }  
-    }
+    // __syncthreads();
+    // if (loc_threadidx == 0 && blockidx == 0 && iter == 0){
+    //     for (int i = 0; i < block_size; i++)
+    //     {
+    //         printf("%d\n", loc_data[i]);
+    //     }  
+    // }
      __syncthreads();
 
 
