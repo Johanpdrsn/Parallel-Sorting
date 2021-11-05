@@ -119,8 +119,8 @@ int main (int argc, char * argv[]) {
 
     //  ** New kernel section ** 
     // setup execution parameters
-    int dimbl = (int) (sqrt(ceil(N/1024))) + 1;
-    dim3 block(16, 16, 1); // 256 threads per block
+    int dimbl = 1;//(int) (sqrt(ceil(N/1024))) + 1;
+    dim3 block(32, 32, 1); // 256 threads per block
     dim3 grid (dimbl, dimbl, 1); 
 
     //Allocate and Initialize Host data with random values
@@ -163,9 +163,9 @@ int main (int argc, char * argv[]) {
         for (int iter=0; iter<1; iter++){
             kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,iter);
             //kern3<blockMemSize><<< grid, block >>>(glb_bins, scanned_glb_bins, num_glb_bins);
-            cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);	
-            kern4<blockMemSize><<< grid, block >>>(scanned_glb_bins, keys_out, keys_sort, N ,iter, glb_bins);
-            keys_in = keys_sort;
+            //cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);	
+            //kern4<blockMemSize><<< grid, block >>>(scanned_glb_bins, keys_out, keys_sort, N ,iter, glb_bins);
+            //keys_in = keys_sort;
         }
     }
     cudaDeviceSynchronize();
@@ -175,7 +175,7 @@ int main (int argc, char * argv[]) {
     elapsedKernel = (t_diff.tv_sec*1e6+t_diff.tv_usec) / ((double)GPU_RUNS);
 
 
-    cudaMemcpy(keys_res, keys_sort, N*sizeof(uint32_t), cudaMemcpyDeviceToHost); // todo: fix keys_in
+    cudaMemcpy(keys_res, keys_out, N*sizeof(uint32_t), cudaMemcpyDeviceToHost); // todo: fix keys_in
     cudaDeviceSynchronize();
     cudaCheckError();
     
