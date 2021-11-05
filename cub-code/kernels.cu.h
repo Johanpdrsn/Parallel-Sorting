@@ -1,5 +1,8 @@
 #ifndef KERNELS
 #define KERNELS
+#define lgWARP      3
+#define WARP        (1<<lgWARP)
+
 
 #include "cub.cuh"
 #include <numeric>
@@ -12,6 +15,149 @@ __device__ int getGlobalIdx()
     return threadId;
 }
 
+template<class T>
+class Add {
+  public:
+    typedef T InpElTp;
+    typedef T RedElTp;
+    static const bool commutative = true;
+    static __device__ __host__ inline T identInp()                    { return (T)0;    }
+    static __device__ __host__ inline T mapFun(const T& el)           { return el;      }
+    static __device__ __host__ inline T identity()                    { return (T)0;    }
+    static __device__ __host__ inline T apply(const T t1, const T t2) { return t1 + t2; }
+
+    static __device__ __host__ inline bool equals(const T t1, const T t2) { return (t1 == t2); }
+    static __device__ __host__ inline T remVolatile(volatile T& t)    { T res = t; return res; }
+};
+
+
+template<class OP>
+__device__ inline typename OP::RedElTp
+scanIncWarp( volatile typename OP::RedElTp* ptr, const unsigned int idx ) {
+    const unsigned int lane = idx & (WARP-1);
+    // if(lane==0) {
+    //     #pragma unroll
+    //     for(int i=1; i<WARP; i++) {
+    //         ptr[idx+i] = OP::apply(ptr[idx+i-1], ptr[idx+i]);
+    //     }
+    // }
+    for (int i = 0; i < lgWARP; i++){
+        int h = 1 << i;
+
+        if (lane>=h){
+            ptr[idx]=OP::apply(ptr[idx-h], ptr[idx]);
+        }
+    }
+    return OP::remVolatile(ptr[idx]);
+}
+
+template<class OP>
+__device__ inline typename OP::RedElTp
+scanIncBlock(volatile typename OP::RedElTp* ptr, const unsigned int idx) {
+    const unsigned int lane   = idx & (WARP-1);
+    const unsigned int warpid = idx >> lgWARP;
+
+    // 1. perform scan at warp level
+    typename OP::RedElTp res = scanIncWarp<OP>(ptr,idx);
+    __syncthreads();
+
+    // 2. place the end-of-warp results in
+    //   the first warp. This works because
+    //   warp size = 32, and 
+    //   max block size = 32^2 = 1024
+
+    // only the last thread runs the iff -> thus only 1023 will have a warpid of 31
+    typename OP::RedElTp temp;
+    if (lane == (WARP-1)) { temp = OP::remVolatile(ptr[idx]); } 
+    __syncthreads();
+    if (lane == (WARP-1)) { ptr[warpid] = temp;}
+    __syncthreads();
+
+    // 3. scan again the first warp
+    if (warpid == 0) scanIncWarp<OP>(ptr, idx);
+    __syncthreads();
+
+    // 4. accumulate results from previous step;
+    if (warpid > 0) {
+        res = OP::apply(ptr[warpid-1], res);
+    }
+
+    return res;
+}
+
+
+template<class OP>
+__device__ void partition2(uint32_t* loc_data, uint32_t iteration, uint32_t bstart, uint32_t block_size){
+
+    __shared__ uint32_t ps[1024];
+    __shared__ uint32_t negPs[1024];
+
+
+
+    const int loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
+    const uint32_t glb_threadidx = getGlobalIdx();
+    const uint32_t mask = (1 << (bstart+ iteration));
+    uint32_t dat4[4];
+
+    __syncthreads();
+
+    for (size_t i = 0; i < 4; i++)
+    {
+        uint32_t idx = loc_threadidx*4+i;
+
+        ps[idx] = 0;
+        negPs[idx] = 0;
+        dat4[i] = loc_data[idx];
+    }
+    
+    __syncthreads();
+
+    for (int i=0; i<4; i++){
+        uint32_t idx = loc_threadidx * 4 + i;
+        
+
+        uint32_t p = dat4[i] & mask;
+        uint32_t negP = 1-p;
+
+        ps[idx] = p;
+        negPs[idx] = negP;
+    }
+    __syncthreads();
+
+    for (int i=0; i<4; i++){
+        uint32_t idx = loc_threadidx * 4 + i;
+
+        scanIncBlock<OP>(ps, idx);
+        scanIncBlock<OP>(negPs, idx);
+    }
+    __syncthreads();
+
+    for (int i=0; i<4; i++){
+        uint32_t idx = loc_threadidx * 4 + i;
+        uint32_t p = dat4[i] & mask;
+
+        int len_true = ps[block_size-1];
+
+        int iT, iF;
+
+        if (p == 1){
+            iT = ps[idx];
+
+            loc_data[iT-1] = dat4[i];
+        } 
+        else{
+            iF = negPs[idx];
+            loc_data[iF-1+len_true] = dat4[i];
+        }
+
+
+    
+    }
+
+    __syncthreads();
+
+}
+
 
 
 template<class T>
@@ -22,31 +168,6 @@ __device__ void plus_scan(T *x, T *y, int n)
     {
         x[i] = x[i-1] + y[i-1];
     }
-}
-
-
-//Unstable countSort - geeksforgeeks implementation
-void countSort(char arr[])
-{
-    char output[strlen(arr)];
-
-    int count[16], i;
-    memset(count, 0, sizeof(count));
-
-    for (i = 0; arr[i]; ++i)
-        ++count[arr[i]];
-
-    for (i = 1; i <= 16; ++i)
-        count[i] += count[i - 1];
-
-    for (i = 0; arr[i]; ++i)
-    {
-        output[count[arr[i]] - 1] = arr[i];
-        --count[arr[i]];
-    }
-
-    for (i = 0; arr[i]; ++i)
-        arr[i] = output[i];
 }
 
 template <int block_size> //<class ElTp> <- we will need this to generalize
@@ -100,7 +221,14 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
         }
     }
 
-
+    // __syncthreads();
+    // if (loc_threadidx == 0 && blockidx == 0 && iter == 0){
+    //     for (int i = 0; i < 16; i++)
+    //     {
+    //         printf("%d\n", local_histogram[i]);
+    //     } 
+    //     printf("\n");
+    // }
 
     __syncthreads();
     plus_scan(scan_local_histogram, local_histogram, 16);
@@ -113,6 +241,7 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     //     }  
     // }
 
+
     __syncthreads();
 
 
@@ -121,19 +250,22 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     {
         if ((glb_memoffset + i) < N)
         {
-            uint32_t binidx = (data[i] & mask) >> bstart;
-            int old = atomicAdd(&scan_local_histogram[binidx],1);
-            loc_data[old] = data[i];
+            // uint32_t binidx = (data[i] & mask) >> bstart;
+            // int old = atomicAdd(&scan_local_histogram[binidx],1);
+            // loc_data[old] = data[i];
+
+            partition2<Add<uint32_t> >(loc_data, i, bstart, block_size);
         }
     }
-    // __syncthreads();
+
+    //     __syncthreads();
     // if (loc_threadidx == 0 && blockidx == 0 && iter == 0){
-    //     for (int i = 0; i < block_size; i++)
+    //     for (int i = 0; i < 16; i++)
     //     {
-    //         printf("%d\n", loc_data[i]);
+    //         printf("%d\n", scan_local_histogram[i]);
     //     }  
     // }
-    __syncthreads();
+    // __syncthreads();
 
 
 
