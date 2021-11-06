@@ -119,7 +119,7 @@ int main (int argc, char * argv[]) {
 
     //  ** New kernel section ** 
     // setup execution parameters
-    int dimbl = 1;//(int) (sqrt(ceil(N/1024))) + 1;
+    int dimbl = 2;//(int) (sqrt(ceil(N/1024))) + 1;
     dim3 block(32, 32, 1); // 256 threads per block
     dim3 grid (dimbl, dimbl, 1); 
 
