@@ -19,7 +19,7 @@ bool validateZ(Z* A, uint32_t sizeAB) {
 
 void randomInitNat(uint32_t* data, const uint32_t size, const uint32_t H) {
     for (int i = 0; i < size; ++i) {
-        unsigned long int r = rand()%16;
+        unsigned long int r = rand()%32;
         data[i] = r % H;
         
     }
@@ -154,11 +154,18 @@ int main (int argc, char * argv[]) {
     cudaMalloc(&d_temp_storage, temp_storage_bytes);
     
     for(int q=0; q<GPU_RUNS; q++) {
-        for (int iter=0; iter<1; iter++){
+        for (int iter=0; iter<2; iter++){
             kern1<blockMemSize><<< grid, block >>>(keys_in, keys_out, glb_bins, N ,iter);
+            cudaDeviceSynchronize();
+
+
             //kern3<blockMemSize><<< grid, block >>>(glb_bins, scanned_glb_bins, num_glb_bins);
-            cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);	
+            cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes, glb_bins, scanned_glb_bins, num_glb_bins);
+            cudaDeviceSynchronize();
+	
             kern4<blockMemSize><<< grid, block >>>(scanned_glb_bins, keys_out, keys_sort, N ,iter, glb_bins);
+            cudaDeviceSynchronize();
+
             keys_in = keys_sort;
         }
     }
