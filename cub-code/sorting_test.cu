@@ -6,12 +6,6 @@
 
 #define blockMemSize 1024
 
-void printBits(int val){
-    for(unsigned int mask = 0x80000000; mask; mask >>= 1){
-         printf("%d", !!(mask & val));
-    }
-    printf("\n");
-}
 
 template<class Z>
 bool validateZ(Z* A, uint32_t sizeAB) {
@@ -183,7 +177,6 @@ int main (int argc, char * argv[]) {
     // for (size_t i = 0; i < N; i++)
     //   {
 	//     printf("%d\n",keys_res[i]);
-    //     //printBits(keys_res[i]);
     //   }
     
     cudaMemcpy(global_histogram_output, glb_bins, dimbl * dimbl* 16 *sizeof(uint32_t), cudaMemcpyDeviceToHost);

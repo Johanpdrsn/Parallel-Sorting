@@ -4,7 +4,7 @@ all: cub-sort
 
 cub-sort: sorting_test.cu helper.cu.h
 	nvcc -I$(CUB)/cub $(CFLAGS) -o test-cub sorting_test.cu
-	./test-cub 1025
+	./test-cub 1030
 
 cub-compile: sorting_test.cu helper.cu.h
 	nvcc -I$(CUB)/cub $(CFLAGS) -o test-cub sorting_test.cu

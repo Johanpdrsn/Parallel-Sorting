@@ -59,7 +59,7 @@ scanIncWarp(volatile typename OP::RedElTp *ptr, const unsigned int idx)
 
 template <class OP>
 __device__ inline typename OP::RedElTp
-scanIncBlock(volatile typename OP::RedElTp *ptr, const unsigned int idx)
+scanIncBlock(volatile typename OP::RedElTp *ptr, const unsigned int idx, int N)
 {
     const unsigned int lane = idx & (WARP - 1);
     const unsigned int warpid = idx >> lgWARP;
@@ -98,18 +98,21 @@ scanIncBlock(volatile typename OP::RedElTp *ptr, const unsigned int idx)
     }
     __syncthreads();
 
-    ptr[idx] = res;
+    if (getGlobalIdx() < N) ptr[idx] = res;
+    else ptr[idx] = 0;
 
     __syncthreads();
     return res;
 }
 
 template <class OP, int block_size>
-__device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bstart, uint32_t iter)
+__device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bstart, uint32_t iter, uint32_t N)
 {
+
 
     __shared__ uint32_t ps[1024];
     __shared__ uint32_t negPs[1024];
+
 
     const uint32_t loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
     const uint32_t blockidx = blockIdx.x + blockIdx.y * gridDim.x;
@@ -117,53 +120,90 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
 
     const uint32_t mask = (1 << (bstart + iteration));
     uint32_t dat4;
-
+    uint32_t p;
+    uint32_t negP;
     uint32_t idx = loc_threadidx;
 
+    __syncthreads();
+
+    //if (glb_threadidx < N)
+{
     ps[idx] = 0;
     negPs[idx] = 0;
     dat4 = loc_data[idx];
-    __syncthreads();
-    uint32_t p = (dat4 & mask) >> (iteration+ (iter*4));
-    uint32_t negP = 1 - p;
+
+
+    p = (dat4 & mask) >> (iteration+iter*4);
+    negP = 1 - p;
 
     ps[idx] = p;
     negPs[idx] = negP;
+}
+
+
+
 
     __syncthreads();
 
-    scanIncBlock<OP>(ps, idx);
-    scanIncBlock<OP>(negPs, idx);
+    scanIncBlock<OP>(ps, idx, N);
+    scanIncBlock<OP>(negPs, idx, N);
+
+
+
 
     __syncthreads();
 
 
-    int len_true = negPs[block_size - 1];
-
-    int iT, iF;
-
-    if (p)
+    if (glb_threadidx < N)
     {
-        iT = ps[idx] -1 + len_true;
-        loc_data[iT] = dat4;
-    }
-    else
-    {
+        int len_false = negPs[block_size - 1];
+
+        int iT, iF;
+        iT = ps[idx] -1 + len_false;
         iF = negPs[idx];
-        loc_data[iF - 1] = dat4;
+
+
+    if (blockidx == 1 && loc_threadidx == 0 && iteration == 1){
+        for (size_t i = 0; i < block_size; i++)
+        {
+            //printf("%d: %d\n",iT, iF);
+        }  
     }
+
+        if (p)
+        {
+            iT = ps[idx] -1 + len_false;
+            loc_data[iT] = dat4;
+        }
+        else
+        {
+            iF = negPs[idx];
+            loc_data[iF - 1] = dat4;
+        }
+    }
+
+    // __syncthreads();
+    // if (blockidx == 0 && loc_threadidx == 0 && iteration == 3){
+    //     for (size_t i = 0; i < block_size; i++)
+    //     {
+    //         printf("%d\n",loc_data[i]);
+    //     }  
+    // }
+
+
 
     __syncthreads();
     
 }
 
+// Exclusive scan with plus operator
 template <class T>
-__device__ void plus_scan(T *x, T *y, int n)
+__device__ void plus_scan(T *scanned_arr, T *arr, int n)
 {
-    x[0] = 0;
+    scanned_arr[0] = 0;
     for (size_t i = 1; i < n; i++)
     {
-        x[i] = x[i - 1] + y[i - 1];
+        scanned_arr[i] = scanned_arr[i - 1] + arr[i - 1];
     }
 }
 
@@ -226,18 +266,18 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     // SORT LOCAL TILE
     for (int i = 0; i < 4; i++)
     {
-        partition2<Add<uint32_t>, block_size>(loc_data, i, bstart, iter);
+        partition2<Add<uint32_t>, block_size>(loc_data, i, bstart, iter, N);
     }
 
     // __syncthreads();
-    // if (loc_threadidx == 0 && blockidx == 1 && iter == 0)
+    // if (loc_threadidx == 0 && blockidx == 0 && iter == 0)
     // {
     //     for (int i = 0; i < 1024; i++)
     //     {
     //         printf("%d\n", loc_data[i]);
     //     }
     // }
-    __syncthreads();
+    // __syncthreads();
 
     // WRITE LOCAL HISTOGRAMS TO GLOBAL
 
@@ -256,9 +296,9 @@ __global__ void kern1(uint32_t *data_keys_in, uint32_t *data_keys_out, uint32_t 
     }
     // __syncthreads();
     // if (loc_threadidx == 0 && blockidx == 1 && iter == 0){
-    //     for (int i = 0; i < block_size; i++)
+    //     for (int i = 0; i < N; i++)
     //     {
-    //         printf("%d\n", loc_data[i]);
+    //         printf("%d\n", data_keys_out[i]);
     //     }
     // }
 }
@@ -310,7 +350,7 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
     plus_scan(scan_local_histogram, local_histogram, 16);
 
     // __syncthreads();
-    // if (loc_threadidx == 0 && blockidx == 0 && iter == 1){
+    // if (loc_threadidx == 0 && blockidx == 1 && iter == 0){
     //     for (int i = 0; i < block_size; i++)
     //     {
     //         printf("%d\n", loc_data[i]);
@@ -327,27 +367,38 @@ __global__ void kern4(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_
 
         elmBin = (data & mask) >> bstart;    
         glbScanElm = glb_histogram_in[p * elmBin + blockidx]; //V
+        //if (loc_threadidx == 5 && blockidx == 1 && iter == 0) printf("%d: %d: %d: %d\n", data, mask, elmBin, glbScanElm);
+
         //printf("%d\n",glbScanElm);
 
-        if (elmBin == 0)
-        {
-            loc_scan_offset = 0;
-        }
-        else
-        {
-            loc_scan_offset = scan_local_histogram[elmBin];
-        }
+        loc_scan_offset = scan_local_histogram[elmBin];
 
+
+        if (glbScanElm + (loc_threadidx - loc_scan_offset) == 130) printf("%d: %d: %d: %d: %d: %d\n", data, loc_threadidx, loc_scan_offset, glbScanElm, blockidx, glbScanElm + loc_threadidx - loc_scan_offset);
         glb_data_out[glbScanElm + (loc_threadidx - loc_scan_offset)] = data;
     }
 
-    __syncthreads();
-    // if (loc_threadidx == 0 && blockidx == 1 && iter == 0){
-    //     for (int i = 0; i < N; i++)
+    // __syncthreads();
+    // if (loc_threadidx == 0 && blockidx == 0 && iter == 0){
+    //     for (int i = 0; i < 16; i++)
     //     {
-    //         printf("%d\n", loc_data[i]);
+    //         printf("%d: %d\n", i, scan_local_histogram[i]);
     //     }
     // }
+    //     __syncthreads();
+    // if (loc_threadidx == 0 && blockidx == 1 && iter == 0){
+    //     for (int i = 0; i < 16; i++)
+    //     {
+    //         printf("%d: %d\n", i, scan_local_histogram[i]);
+    //     }
+    // }
+    __syncthreads();
+    if (loc_threadidx == 0 && blockidx == 1 && iter == 0){
+        for (int i = 0; i < 4*16; i++)
+        {
+            printf("%d: %d\n", i, glb_histogram_in[i]);
+        }
+    }
 }
 
 #endif
