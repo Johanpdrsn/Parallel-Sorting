@@ -151,8 +151,8 @@ int main(int argc, char *argv[])
     {
         for (int iter = 0; iter < 8; iter++)
         {
-            kern1<blockMemSize><<<grid, block>>>(keys_in, keys_out, glb_bins, N, iter);
-            //kern1_tiled<blockMemSize><<<grid, block2>>>(keys_in, keys_out, glb_bins, N, iter);
+            //kern1<blockMemSize><<<grid, block>>>(keys_in, keys_out, glb_bins, N, iter);
+            kern1_tiled<blockMemSize><<<grid, block2>>>(keys_in, keys_out, glb_bins, N, iter);
             cudaDeviceSynchronize();
 
             //kern3<blockMemSize><<< grid, block >>>(glb_bins, scanned_glb_bins, num_glb_bins);

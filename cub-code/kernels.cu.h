@@ -259,7 +259,7 @@ __global__ void kern4_tiled(uint32_t *glb_histogram_in, uint32_t *glb_data_in, u
     //local hist
     for (int i = 0; i < 4; i++)
     {
-        if (glb_memoffset + i < N)
+        if (glb_memoffset + i < N && loc_threadidx == 0)
         {
             for (int i = 0; i < 16; i++)
             {
