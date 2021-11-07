@@ -8,8 +8,8 @@
 #include <sys/time.h>
 #include <time.h>
 
-#define GPU_RUNS 1
-#define lgWARP 3 //3 for tiled
+#define GPU_RUNS 400
+#define lgWARP 5 //3 for tiled
 #define WARP (1 << lgWARP)
 
 int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
@@ -209,7 +209,6 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
     scanIncBlock<OP>(negPs, idx);
 
     __syncthreads();
-    if (iteration == 0 && iter == 0)printf("%d: %d\n",idx, ps[idx]);
 
     if (glb_threadidx < N)
     {
@@ -230,7 +229,6 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
             loc_data[iF - 1] = dat4;
         }
     }
-    __syncthreads();
 }
 
 template <class OP, int block_size>
@@ -257,12 +255,9 @@ __device__ void partition2_tiled(uint32_t *loc_data, uint32_t iteration, uint32_
 
         uint32_t idx = loc_memoffset + i;
 
-
-
         ps[idx] = 0;
         negPs[idx] = 0;
 
-        
         __syncthreads();
 
         if (glb_memoffset + i < N)
@@ -274,11 +269,9 @@ __device__ void partition2_tiled(uint32_t *loc_data, uint32_t iteration, uint32_
 
             ps[idx] = p;
             negPs[idx] = negP;
-
         }
         __syncthreads();
-    //if (blockidx == 0 && iteration == 0 && iter == 0)printf(" %d\n",ps[idx]);
-
+        //if (blockidx == 0 && iteration == 0 && iter == 0)printf(" %d\n",ps[idx]);
     }
 
     __syncthreads();
@@ -287,31 +280,29 @@ __device__ void partition2_tiled(uint32_t *loc_data, uint32_t iteration, uint32_
     {
         uint32_t idx = loc_memoffset + i;
 
-
         __syncthreads();
 
         scanIncBlock<OP>(ps, idx);
         scanIncBlock<OP>(negPs, idx);
         __syncthreads();
-        if (blockidx == 0 && iteration == 0 && iter == 0)printf("%d: %d\n",idx, ps[idx]);
-
+        if (blockidx == 0 && iteration == 0 && iter == 0)
+            printf("%d: %d\n", idx, ps[idx]);
     }
 
-        // if (blockidx == 0 && iteration == 0 && iter == 0  && loc_threadidx == 0){
-        //     {
-        //         for (size_t i = 0; i < 1024; i++)
-        //         {
-        //             printf("%d\n",ps[i]);
-        //         }   
-        //     }
-        // }
+    // if (blockidx == 0 && iteration == 0 && iter == 0  && loc_threadidx == 0){
+    //     {
+    //         for (size_t i = 0; i < 1024; i++)
+    //         {
+    //             printf("%d\n",ps[i]);
+    //         }
+    //     }
+    // }
 
     for (int i = 0; i < 4; i++)
     {
         uint32_t idx = loc_memoffset + i;
 
-    //if (iteration == 0 && iter == 0)printf("%d: %d\n",idx, ps[idx]);
-
+        //if (iteration == 0 && iter == 0)printf("%d: %d\n",idx, ps[idx]);
 
         __syncthreads();
         if (glb_memoffset + i < N)
@@ -326,14 +317,14 @@ __device__ void partition2_tiled(uint32_t *loc_data, uint32_t iteration, uint32_
             {
 
                 iT = ps[idx] - 1 + len_false;
-            //printf("P: %d: %d: %d: %d: %d\n", idx, iT, len_false, loc_threadidx,i);
+                //printf("P: %d: %d: %d: %d: %d\n", idx, iT, len_false, loc_threadidx,i);
 
                 loc_data[iT] = data[i];
             }
             else
             {
                 iF = negPs[idx];
-            //printf("NegP: %d: %d: %d\n", idx, iF, len_false);
+                //printf("NegP: %d: %d: %d\n", idx, iF, len_false);
 
                 loc_data[iF - 1] = data[i];
             }
