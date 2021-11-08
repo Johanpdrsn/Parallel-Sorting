@@ -108,7 +108,7 @@ int main(int argc, char *argv[])
     //  ** New kernel section **
     // setup execution parameters
     int dimbl = (int)ceil(sqrt(ceil(N / 1024)));
-    dim3 block(32, 32, 1); // 256 threads per block
+    dim3 block(32, 32, 1);  // 256 threads per block
     dim3 block2(16, 16, 1); // 256 threads per block
 
     dim3 grid(dimbl, dimbl, 1);
@@ -170,11 +170,6 @@ int main(int argc, char *argv[])
     cudaMemcpy(keys_res, keys_in, N * sizeof(uint32_t), cudaMemcpyDeviceToHost); // todo: fix keys_in
     cudaDeviceSynchronize();
     cudaCheckError();
-
-    // for (size_t i = 0; i < N; i++)
-    //   {
-    //     printf("%d\n",keys_res[i]);
-    //   }
 
     cudaMemcpy(global_histogram_output, glb_bins, dimbl * dimbl * 16 * sizeof(uint32_t), cudaMemcpyDeviceToHost);
     cudaDeviceSynchronize();

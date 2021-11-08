@@ -8,8 +8,8 @@
 #include <sys/time.h>
 #include <time.h>
 
-#define GPU_RUNS 400
-#define lgWARP 5 //3 for tiled
+#define GPU_RUNS 100
+#define lgWARP 5
 #define WARP (1 << lgWARP)
 
 int timeval_subtract(struct timeval *result, struct timeval *t2, struct timeval *t1)
@@ -75,11 +75,15 @@ void writeRuntime(const char *fname, double elapsed)
     fclose(f);
 }
 
-__device__ int getGlobalIdx()
+// Exclusive scan with plus operator
+template <class T>
+__device__ void plus_scan(T *scanned_arr, T *arr, int n)
 {
-    int blockId = blockIdx.x + blockIdx.y * gridDim.x;
-    int threadId = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
-    return threadId;
+    scanned_arr[0] = 0;
+    for (size_t i = 1; i < n; i++)
+    {
+        scanned_arr[i] = scanned_arr[i - 1] + arr[i - 1];
+    }
 }
 
 template <class T>
@@ -178,8 +182,9 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
     __shared__ uint32_t ps[1024];
     __shared__ uint32_t negPs[1024];
 
-    const uint32_t loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
-    const uint32_t glb_threadidx = getGlobalIdx();
+    const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
+    const int loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
+    const int glb_threadidx = blockidx * (blockDim.x * blockDim.y) + loc_threadidx;
 
     const uint32_t mask = (1 << (bstart + iteration));
     uint32_t dat4;
@@ -192,6 +197,7 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
     ps[idx] = 0;
     negPs[idx] = 0;
 
+    // CREATE BIT ARRAYS
     if (glb_threadidx < N)
     {
         dat4 = loc_data[idx];
@@ -210,6 +216,7 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
 
     __syncthreads();
 
+    // SORT FOR BITS
     if (glb_threadidx < N)
     {
         int len_false = negPs[block_size - 1];
@@ -231,118 +238,107 @@ __device__ void partition2(uint32_t *loc_data, uint32_t iteration, uint32_t bsta
     }
 }
 
-template <class OP, int block_size>
-__device__ void partition2_tiled(uint32_t *loc_data, uint32_t iteration, uint32_t bstart, uint32_t iter, uint32_t N)
-{
-    __shared__ uint32_t ps[1024];
-    __shared__ uint32_t negPs[1024];
+// template <class OP, int block_size>
+// __device__ void partition2_tiled(uint32_t *loc_data, uint32_t iteration, uint32_t bstart, uint32_t iter, uint32_t N)
+// {
+//     __shared__ uint32_t ps[1024];
+//     __shared__ uint32_t negPs[1024];
 
-    const uint32_t loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
-    const uint32_t glb_threadidx = getGlobalIdx();
+//     const uint32_t loc_threadidx = (threadIdx.y * blockDim.x) + threadIdx.x;
+//     const uint32_t glb_threadidx = getGlobalIdx();
 
-    const int glb_memoffset = 4 * glb_threadidx;
-    const int loc_memoffset = 4 * loc_threadidx;
-    const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
+//     const int glb_memoffset = 4 * glb_threadidx;
+//     const int loc_memoffset = 4 * loc_threadidx;
+//     const int blockidx = blockIdx.x + blockIdx.y * gridDim.x;
 
-    const uint32_t mask = (1 << (bstart + iteration));
-    uint32_t data[4];
-    uint32_t p;
-    uint32_t negP;
+//     const uint32_t mask = (1 << (bstart + iteration));
+//     uint32_t data[4];
+//     uint32_t p;
+//     uint32_t negP;
 
-    __syncthreads();
-    for (int i = 0; i < 4; i++)
-    {
+//     __syncthreads();
+//     for (int i = 0; i < 4; i++)
+//     {
 
-        uint32_t idx = loc_memoffset + i;
+//         uint32_t idx = loc_memoffset + i;
 
-        ps[idx] = 0;
-        negPs[idx] = 0;
+//         ps[idx] = 0;
+//         negPs[idx] = 0;
 
-        __syncthreads();
+//         __syncthreads();
 
-        if (glb_memoffset + i < N)
-        {
-            data[i] = loc_data[idx];
+//         if (glb_memoffset + i < N)
+//         {
+//             data[i] = loc_data[idx];
 
-            p = (data[i] & mask) >> (iteration + iter * 4);
-            negP = 1 - p;
+//             p = (data[i] & mask) >> (iteration + iter * 4);
+//             negP = 1 - p;
 
-            ps[idx] = p;
-            negPs[idx] = negP;
-        }
-        __syncthreads();
-        //if (blockidx == 0 && iteration == 0 && iter == 0)printf(" %d\n",ps[idx]);
-    }
+//             ps[idx] = p;
+//             negPs[idx] = negP;
+//         }
+//         __syncthreads();
+//         //if (blockidx == 0 && iteration == 0 && iter == 0)printf(" %d\n",ps[idx]);
+//     }
 
-    __syncthreads();
+//     __syncthreads();
 
-    for (int i = 0; i < 4; i++)
-    {
-        uint32_t idx = loc_memoffset + i;
+//     for (int i = 0; i < 4; i++)
+//     {
+//         uint32_t idx = loc_memoffset + i;
 
-        __syncthreads();
+//         __syncthreads();
 
-        scanIncBlock<OP>(ps, idx);
-        scanIncBlock<OP>(negPs, idx);
-        __syncthreads();
-        if (blockidx == 0 && iteration == 0 && iter == 0)
-            printf("%d: %d\n", idx, ps[idx]);
-    }
+//         scanIncBlock<OP>(ps, idx);
+//         scanIncBlock<OP>(negPs, idx);
+//         __syncthreads();
+//         if (blockidx == 0 && iteration == 0 && iter == 0)
+//             printf("%d: %d\n", idx, ps[idx]);
+//     }
 
-    // if (blockidx == 0 && iteration == 0 && iter == 0  && loc_threadidx == 0){
-    //     {
-    //         for (size_t i = 0; i < 1024; i++)
-    //         {
-    //             printf("%d\n",ps[i]);
-    //         }
-    //     }
-    // }
+//     // if (blockidx == 0 && iteration == 0 && iter == 0  && loc_threadidx == 0){
+//     //     {
+//     //         for (size_t i = 0; i < 1024; i++)
+//     //         {
+//     //             printf("%d\n",ps[i]);
+//     //         }
+//     //     }
+//     // }
 
-    for (int i = 0; i < 4; i++)
-    {
-        uint32_t idx = loc_memoffset + i;
+//     for (int i = 0; i < 4; i++)
+//     {
+//         uint32_t idx = loc_memoffset + i;
 
-        //if (iteration == 0 && iter == 0)printf("%d: %d\n",idx, ps[idx]);
+//         //if (iteration == 0 && iter == 0)printf("%d: %d\n",idx, ps[idx]);
 
-        __syncthreads();
-        if (glb_memoffset + i < N)
-        {
-            uint32_t len_false = negPs[block_size - 1];
+//         __syncthreads();
+//         if (glb_memoffset + i < N)
+//         {
+//             uint32_t len_false = negPs[block_size - 1];
 
-            uint32_t iT, iF;
-            iT = ps[idx] - 1 + len_false;
-            iF = negPs[idx];
+//             uint32_t iT, iF;
+//             iT = ps[idx] - 1 + len_false;
+//             iF = negPs[idx];
 
-            if (p)
-            {
+//             if (p)
+//             {
 
-                iT = ps[idx] - 1 + len_false;
-                //printf("P: %d: %d: %d: %d: %d\n", idx, iT, len_false, loc_threadidx,i);
+//                 iT = ps[idx] - 1 + len_false;
+//                 //printf("P: %d: %d: %d: %d: %d\n", idx, iT, len_false, loc_threadidx,i);
 
-                loc_data[iT] = data[i];
-            }
-            else
-            {
-                iF = negPs[idx];
-                //printf("NegP: %d: %d: %d\n", idx, iF, len_false);
+//                 loc_data[iT] = data[i];
+//             }
+//             else
+//             {
+//                 iF = negPs[idx];
+//                 //printf("NegP: %d: %d: %d\n", idx, iF, len_false);
 
-                loc_data[iF - 1] = data[i];
-            }
-        }
+//                 loc_data[iF - 1] = data[i];
+//             }
+//         }
 
-        __syncthreads();
-    }
-}
-
-// Exclusive scan with plus operator
-template <class T>
-__device__ void plus_scan(T *scanned_arr, T *arr, int n)
-{
-    scanned_arr[0] = 0;
-    for (size_t i = 1; i < n; i++)
-    {
-        scanned_arr[i] = scanned_arr[i - 1] + arr[i - 1];
-    }
-}
+//         __syncthreads();
+//     }
+// }
 
 #endif // HISTO_HELPER

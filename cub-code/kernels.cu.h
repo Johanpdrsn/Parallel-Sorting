@@ -69,7 +69,7 @@ template <int block_size> //<class ElTp> <- we will need this to generalize
 __global__ void kern4_tiled(uint32_t *glb_histogram_in, uint32_t *glb_data_in, uint32_t *glb_data_out, int N, int iter, uint32_t *hist)
 {
     __shared__ uint32_t local_histogram[16];
- 
+
     uint32_t scan_local_histogram[16];
     uint32_t data[4];
     int32_t elmBin;
@@ -92,8 +92,8 @@ __global__ void kern4_tiled(uint32_t *glb_histogram_in, uint32_t *glb_data_in, u
             data[i] = glb_data_in[glb_memoffset + i];
         }
     }
-    //local hist
 
+    //LOCAL HISTOGRAM
     if (loc_threadidx == 0)
     {
         for (int i = 0; i < 16; i++)
@@ -104,11 +104,12 @@ __global__ void kern4_tiled(uint32_t *glb_histogram_in, uint32_t *glb_data_in, u
 
     __syncthreads();
 
-    // scanned local hist
+    // SCAN LOCAL HISTOGRAM
     plus_scan(scan_local_histogram, local_histogram, 16);
 
     __syncthreads();
-    
+
+    // SCATTER TO GLOBAL
     uint32_t mask;
     for (int i = 0; i < 4; i++)
     {
